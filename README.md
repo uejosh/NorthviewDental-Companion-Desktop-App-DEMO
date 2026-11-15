@@ -58,7 +58,11 @@ python3 package.py               # release build + dist/ archive (Windows: ZIP w
 
 Other options: `--data-dir <folder>` isolates settings/demo data, `--demo` forces demo mode.
 
-Windows builds must be made on Windows (`python3 package.py`) or with a MinGW cross toolchain
+**GitHub Actions** (`.github/workflows/windows.yml`) builds the Windows ZIP on every push to `main`
+(download it from the run's *Artifacts*), and publishes a GitHub Release when you push a tag:
+`git tag v0.1.0 && git push origin v0.1.0`. It can also be started by hand from the Actions tab.
+
+Locally, Windows builds must be made on Windows (`python3 package.py`) or with a MinGW cross toolchain
 (`python3 package.py --target x86_64-pc-windows-gnu`). Release builds hide the console window.
 
 ## Layout
