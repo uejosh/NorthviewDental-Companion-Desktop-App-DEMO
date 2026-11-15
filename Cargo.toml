@@ -23,6 +23,9 @@ typst-pdf = "0.15"
 typst = "0.15"
 typst-layout = "0.15"
 
+[build-dependencies]
+winresource = "0.1"
+
 [profile.release]
 lto = true
 strip = true

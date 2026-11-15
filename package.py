@@ -76,6 +76,9 @@ Write-Host 'Northview Office removed. Settings in %LOCALAPPDATA%\NorthviewOffice
 
 README = """Northview Office {version}
 
+INSTALL (Linux)
+  ./install.sh   (adds Northview Office to your applications menu with its icon)
+
 INSTALL (Windows)
   1. Unzip this folder.
   2. Right-click install.ps1 > Run with PowerShell.
@@ -135,6 +138,9 @@ def main() -> int:
                 z.write(f, f"NorthviewOffice/{f.name}")
     else:
         shutil.copy2(exe, stage / "northview-office")
+        shutil.copy2(ROOT / "assets" / "icon-512.png", stage / "icon-512.png")
+        for name in ("install.sh", "uninstall.sh"):
+            shutil.copy2(ROOT / "packaging" / "linux" / name, stage / name)
         out = dist / f"NorthviewOffice-{ver}-{platform.system().lower()}-{platform.machine()}.tar.gz"
         with tarfile.open(out, "w:gz") as t:
             t.add(stage, arcname="NorthviewOffice")

@@ -78,6 +78,9 @@ src/api.rs         website client on a background thread
 src/pdf.rs         Typst → Letter PDF (assets/form.typ)
 src/notify.rs      background desktop notifications
 src/theme.rs       brand palette, Poppins fonts, custom widgets
+src/motion.rs      transition timings and helpers
+build.rs           embeds assets/icon.ico + version info into the Windows .exe
+packaging/linux/   install.sh / uninstall.sh (applications-menu launcher + icon)
 src/ui/            sign-in, shell, inbox, forms, savings, reviews, dialogs
 server/            WordPress plugin source + zip
 ```

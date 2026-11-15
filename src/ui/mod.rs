@@ -77,6 +77,7 @@ pub struct Toast {
 }
 
 pub struct Textures {
+    pub icon: TextureHandle,
     pub logo: TextureHandle,
     pub bg: TextureHandle,
 }
@@ -163,6 +164,7 @@ impl App {
         }
         let client = Client::start(Some(cc.egui_ctx.clone()));
         let tex = Textures {
+            icon: load_tex(&cc.egui_ctx, "app-icon", include_bytes!("../../assets/icon.png")),
             logo: load_tex(&cc.egui_ctx, "logo", include_bytes!("../../assets/NorthViewDental-Logo-R.png")),
             bg: load_tex(&cc.egui_ctx, "signin-bg", include_bytes!("../../assets/Sign-in_screen_bg.jpg")),
         };
@@ -546,9 +548,8 @@ impl App {
                     ctx.send_viewport_cmd(ViewportCommand::Maximized(!max));
                 }
                 let p = ui.painter();
-                let lr = Rect::from_center_size(pos2(r.min.x + 24.0, r.center().y), vec2(18.0, 18.0));
-                p.rect_filled(lr, 4, c::BLUE);
-                p.text(lr.center(), Align2::CENTER_CENTER, "N", font(11.0, W::Bold), c::WHITE);
+                let lr = Rect::from_center_size(pos2(r.min.x + 24.0, r.center().y), vec2(22.0, 22.0));
+                p.image(self.tex.icon.id(), lr, Rect::from_min_max(pos2(0.0, 0.0), pos2(1.0, 1.0)), Color32::WHITE);
                 p.text(pos2(r.min.x + 42.0, r.center().y), Align2::LEFT_CENTER, "Northview Dental — Office", font(12.5, W::Medium), Color32::from_rgb(220, 224, 230));
 
                 // window buttons
