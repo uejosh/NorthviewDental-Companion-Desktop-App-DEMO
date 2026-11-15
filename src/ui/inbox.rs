@@ -174,19 +174,22 @@ fn band(ui: &mut egui::Ui, w: f32, left: &str, right: &str, fg: Color32, bg: Col
 fn row(app: &mut App, ui: &mut egui::Ui, w: f32, req: &Request, now: chrono::DateTime<Utc>, q: &str) {
     let (r, resp) = ui.allocate_exact_size(vec2(w, 78.0), Sense::click());
     let sel = app.sel_req == Some(req.id);
+    let ctx = ui.ctx().clone();
+    let st = ctx.animate_bool_with_time(resp.id.with("sel"), sel, crate::motion::DETAIL_SECS);
+    let ht = ctx.animate_bool_with_time(resp.id.with("hover"), resp.hovered() && !sel, crate::motion::HOVER_SECS);
     let p = ui.painter();
     let bg = if req.pinned() {
-        if sel { Color32::from_rgb(253, 238, 236) } else { c::RED_ROW }
-    } else if sel {
-        c::BLUE_BG
-    } else if resp.hovered() {
-        Color32::from_rgb(249, 251, 253)
+        c::RED_ROW.lerp_to_gamma(Color32::from_rgb(253, 238, 236), st)
     } else {
-        c::WHITE
+        c::WHITE.lerp_to_gamma(Color32::from_rgb(246, 249, 252), ht).lerp_to_gamma(c::BLUE_BG, st)
     };
     p.rect_filled(r, 0, bg);
-    if sel || req.pinned() {
-        p.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0, if req.pinned() { c::RED_BRIGHT } else { c::BLUE });
+    if req.pinned() {
+        p.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0, c::RED_BRIGHT);
+    } else if st > 0.0 {
+        // selection bar grows from the middle of the row
+        let bh = r.height() * st;
+        p.rect_filled(Rect::from_min_size(pos2(r.min.x, r.center().y - bh / 2.0), vec2(3.0, bh)), 0, c::BLUE);
     }
     theme::hline(p, r.min.x, r.max.x, r.max.y);
     let mut x = r.min.x + 16.0;
@@ -231,6 +234,12 @@ fn detail(app: &mut App, ui: &mut egui::Ui, r: Rect, req: &Request, pos: Option<
     theme::card_paint(ui.painter(), r);
     let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(r));
     ui.set_clip_rect(r);
+    // switching requests cross-fades the detail
+    let t = app.tr_detail.update(&req.id, crate::motion::DETAIL_SECS, app.motion);
+    ui.set_opacity(crate::motion::soft(t));
+    if t < 1.0 {
+        ui.ctx().request_repaint();
+    }
     let ui = &mut ui;
     let w = r.width();
     let p = ui.painter().clone();

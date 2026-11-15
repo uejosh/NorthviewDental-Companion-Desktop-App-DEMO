@@ -3,6 +3,7 @@
 //! Options:
 //!   --data-dir <folder>      keep config and demo data in this folder
 //!   --demo                   start with demo data regardless of saved settings
+//!   --no-motion              turn off screen transitions and animations
 //!   --screenshot <file.png>  render the app (demo data) to an image and exit
 //!   --screen <name>          with --screenshot: signin | requests | forms | savings | reviews
 
@@ -10,6 +11,7 @@
 
 mod api;
 mod model;
+mod motion;
 mod notify;
 mod pdf;
 mod sample;
@@ -23,7 +25,7 @@ use eframe::egui;
 use std::path::PathBuf;
 
 fn main() -> eframe::Result<()> {
-    let mut opts = ui::Options { data_dir: None, screenshot: None, screen: None, force_demo: false, live_shot: false };
+    let mut opts = ui::Options { data_dir: None, screenshot: None, screen: None, force_demo: false, live_shot: false, no_motion: false, shot_mid: false };
     let mut args = std::env::args().skip(1);
     while let Some(a) = args.next() {
         match a.as_str() {
@@ -31,8 +33,11 @@ fn main() -> eframe::Result<()> {
             "--screenshot" => opts.screenshot = args.next().map(PathBuf::from),
             "--screen" => opts.screen = args.next(),
             "--demo" => opts.force_demo = true,
+            "--no-motion" => opts.no_motion = true,
             #[cfg(debug_assertions)]
             "--live-screenshot" => opts.live_shot = true,
+            #[cfg(debug_assertions)]
+            "--screenshot-mid-transition" => opts.shot_mid = true,
             "--version" => {
                 println!("Northview Office {}", ui::VERSION);
                 return Ok(());

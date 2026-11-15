@@ -36,8 +36,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
 
         let right = Rect::from_min_max(pos2(left.max.x, full.min.y), full.max);
         let col_w = 400.0;
-        let col = Rect::from_center_size(right.center(), vec2(col_w, 560.0_f32.min(right.height() - 40.0)));
+        let t = app.phase_t;
+        let col = Rect::from_center_size(right.center(), vec2(col_w, 560.0_f32.min(right.height() - 40.0))).translate(vec2(0.0, (1.0 - t) * crate::motion::RISE * 1.5));
         let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(col).layout(egui::Layout::top_down(egui::Align::Min)));
+        ui.set_opacity(t);
         let ui = &mut ui;
         ui.label(txt("Welcome back", 30.0, W::Semi, c::INK));
         ui.label(txt("Choose your name and enter your PIN to sign in.", 14.0, W::Regular, c::MUTED));
@@ -185,6 +187,9 @@ fn hero(app: &App, ui: &mut egui::Ui, r: Rect) {
     let uv = Rect::from_min_size(pos2((1.0 - uw) / 2.0, (1.0 - uh) / 2.0), vec2(uw, uh));
     p.image(app.tex.bg.id(), r, uv, Color32::WHITE);
     p.rect_filled(r, 0, Color32::from_rgba_unmultiplied(33, 38, 51, 205));
+    let mut p = p;
+    p.multiply_opacity(app.phase_t);
+    let lift = (1.0 - app.phase_t) * crate::motion::RISE;
 
     let ls = app.tex.logo.size_vec2();
     let lh = 46.0;
@@ -197,7 +202,7 @@ fn hero(app: &App, ui: &mut egui::Ui, r: Rect) {
 
     let x = r.min.x + 48.0;
     let w = r.width() - 96.0;
-    let mut y = r.max.y - 290.0;
+    let mut y = r.max.y - 290.0 + lift;
     let pill = "Front desk · Office App";
     let g = p.layout_no_wrap(pill.into(), font(12.0, W::Medium), c::WHITE);
     let pr = Rect::from_min_size(pos2(x, y), vec2(g.size().x + 34.0, 26.0));

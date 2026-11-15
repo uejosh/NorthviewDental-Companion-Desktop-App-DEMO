@@ -211,24 +211,28 @@ pub fn button_sized(ui: &mut Ui, label: &str, kind: Btn, icon: Option<&str>, wid
     let g = ui.painter().layout_no_wrap(text, f, fg);
     let w = width.unwrap_or(g.size().x + if small { 24.0 } else { 34.0 });
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let (r, resp) = ui.allocate_exact_size(vec2(w, h), sense);
+    let (full, resp) = ui.allocate_exact_size(vec2(w, h), sense);
     let hovered = enabled && resp.hovered();
+    let ht = ui.ctx().animate_bool_with_time(resp.id.with("hover"), hovered, crate::motion::HOVER_SECS);
+    let pt = ui.ctx().animate_bool_with_time(resp.id.with("press"), enabled && resp.is_pointer_button_down_on(), 0.06);
+    let r = full.shrink(pt * 1.5);
+    let hover_bg = match kind {
+        Btn::Primary | Btn::SmallPrimary => c::BLUE_DARK,
+        Btn::Outline | Btn::Small => c::BG,
+        Btn::DangerText => c::RED_BG,
+        Btn::Danger => Color32::from_rgb(150, 28, 20),
+    };
     let bg = if !enabled {
         if bg == Color32::TRANSPARENT { bg } else { bg.gamma_multiply(0.45) }
-    } else if hovered {
-        match kind {
-            Btn::Primary | Btn::SmallPrimary => c::BLUE_DARK,
-            Btn::Outline | Btn::Small => c::BG,
-            Btn::DangerText => c::RED_BG,
-            Btn::Danger => Color32::from_rgb(150, 28, 20),
-        }
+    } else if bg == Color32::TRANSPARENT {
+        hover_bg.gamma_multiply(ht)
     } else {
-        bg
+        bg.lerp_to_gamma(hover_bg, ht)
     };
     let p = ui.painter();
     p.rect_filled(r, CornerRadius::same((h / 2.0) as u8), bg);
     if let Some(s) = stroke {
-        p.rect_stroke(r, CornerRadius::same((h / 2.0) as u8), Stroke::new(1.0, if hovered { c::LINE_DARK } else { s }), StrokeKind::Inside);
+        p.rect_stroke(r, CornerRadius::same((h / 2.0) as u8), Stroke::new(1.0, s.lerp_to_gamma(c::LINE_DARK, ht)), StrokeKind::Inside);
     }
     let gs = g.size();
     let color = if enabled { fg } else { fg.gamma_multiply(0.7) };
@@ -279,19 +283,35 @@ pub fn segmented(ui: &mut Ui, items: &[(String, Option<usize>)], selected: usize
     let (r, _) = ui.allocate_exact_size(vec2(total, 40.0), Sense::hover());
     ui.painter().rect_filled(r, 20, c::WHITE);
     ui.painter().rect_stroke(r, 20, Stroke::new(1.0, c::LINE), StrokeKind::Inside);
+    let mut rects = Vec::with_capacity(widths.len());
     let mut x = r.min.x + pad;
+    for w in &widths {
+        rects.push(Rect::from_min_size(pos2(x, r.min.y + pad), vec2(*w, 32.0)));
+        x += w;
+    }
+    let target = rects.get(selected).copied().unwrap_or(rects[0]);
+    let pid = ui.id().with(("seg-pill", items.first().map(|i| i.0.as_str()).unwrap_or("")));
+    let px = ui.ctx().animate_value_with_time(pid.with("x"), target.min.x, crate::motion::SLIDE_SECS);
+    let pw = ui.ctx().animate_value_with_time(pid.with("w"), target.width(), crate::motion::SLIDE_SECS);
+    let pill = Rect::from_min_size(pos2(px, target.min.y), vec2(pw, 32.0));
     let mut clicked = None;
-    for (i, ((l, n), w)) in items.iter().zip(widths).enumerate() {
-        let ir = Rect::from_min_size(pos2(x, r.min.y + pad), vec2(w, 32.0));
+    let mut resps = Vec::with_capacity(rects.len());
+    for (i, ((l, _), ir)) in items.iter().zip(rects.iter().copied()).enumerate() {
         let resp = ui.interact(ir, ui.id().with(("seg", l.as_str(), i)), Sense::click());
         let sel = i == selected;
-        let p = ui.painter();
-        if sel {
-            p.rect_filled(ir, 16, c::INK);
-        } else if resp.hovered() {
-            p.rect_filled(ir, 16, c::BG);
+        let ht = ui.ctx().animate_bool_with_time(resp.id.with("hover"), resp.hovered() && !sel, crate::motion::HOVER_SECS);
+        if ht > 0.0 {
+            ui.painter().rect_filled(ir, 16, c::BG.gamma_multiply(ht));
         }
-        let fg = if sel { c::WHITE } else { c::INK };
+        resps.push(resp);
+    }
+    ui.painter().rect_filled(pill, 16, c::INK);
+    for (i, (((l, n), ir), resp)) in items.iter().zip(rects.iter().copied()).zip(resps).enumerate() {
+        let p = ui.painter();
+        // label turns white as the pill covers it
+        let cover = (pill.intersect(ir).width().max(0.0) / ir.width()).clamp(0.0, 1.0);
+        let sel = cover > 0.5;
+        let fg = c::INK.lerp_to_gamma(c::WHITE, cover);
         let g = p.layout_no_wrap(l.clone(), font(13.5, W::Medium), fg);
         let gy = ir.center().y - g.size().y / 2.0;
         let gx = ir.min.x + 15.0;
@@ -307,7 +327,6 @@ pub fn segmented(ui: &mut Ui, items: &[(String, Option<usize>)], selected: usize
         if resp.on_hover_cursor(egui::CursorIcon::PointingHand).clicked() {
             clicked = Some(i);
         }
-        x += w;
     }
     clicked
 }

@@ -17,6 +17,7 @@ It has two modes, chosen from the link under the PIN box on the sign-in screen:
 * **Smile Savings Plan** — members table, renewals within 30 days highlighted, Renew / Send reminder / Mark paid, Add member with automatic pricing ($500 / $925 / $1,350 / $1,500, +$450 per extra member).
 * **Review requests** — visits from the last 7 days (scheduled requests become visits automatically; *Log a visit* adds others), Text/Email, 180-day cooldown, message preview with opt-out line, sent log.
 * Global search (Ctrl K), inbox search (Ctrl F), lock (Ctrl L or the sidebar button), auto-lock after 5 minutes.
+* Motion: screens and the sign-in/lock screen fade and rise in (about ¼ s), the sidebar and filter highlights slide, list selection and hovers ease, request/form details cross-fade and confirmations slide up.
 
 ## Website side: `server/northview-office-api`
 
@@ -56,7 +57,8 @@ cargo run -- --screenshot shot.png --screen requests   # signin|requests|forms|s
 python3 package.py               # release build + dist/ archive (Windows: ZIP with per-user installer)
 ```
 
-Other options: `--data-dir <folder>` isolates settings/demo data, `--demo` forces demo mode.
+Other options: `--data-dir <folder>` isolates settings/demo data, `--demo` forces demo mode,
+`--no-motion` turns off transitions (screen fades, sliding highlights, toast slide; see `src/motion.rs`).
 
 **GitHub Actions** (`.github/workflows/windows.yml`) builds the Windows ZIP on every push to `main`
 (download it from the run's *Artifacts*), and publishes a GitHub Release when you push a tag:

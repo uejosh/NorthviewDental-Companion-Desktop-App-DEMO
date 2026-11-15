@@ -10,6 +10,7 @@ mod signin;
 
 use crate::api::{Client, Cmd, Reply, Staff};
 use crate::model::*;
+use crate::motion::{self, Track};
 use crate::notify::Notifier;
 use crate::sample;
 use crate::storage::{Config, Loaded, Storage};
@@ -63,6 +64,10 @@ pub struct Options {
     /// Debug builds only: take the screenshot against the configured website,
     /// signing in with the PIN in NVO_TEST_PIN.
     pub live_shot: bool,
+    /// Turn off transitions (also off automatically for screenshots).
+    pub no_motion: bool,
+    /// Debug builds: capture the screenshot partway through a transition into `screen`.
+    pub shot_mid: bool,
 }
 
 pub struct Toast {
@@ -135,7 +140,17 @@ pub struct App {
 
     pub pending_sim: Option<Instant>,
 
+    // motion
+    pub motion: bool,
+    pub tr_phase: Track<u8>,
+    pub tr_screen: Track<Screen>,
+    pub tr_detail: Track<u64>,
+    pub tr_form: Track<u64>,
+    /// Eased progress of the current sign-in/lock transition (1.0 = settled).
+    pub phase_t: f32,
+
     shot: Option<(PathBuf, u32, bool)>,
+    shot_mid: Option<Screen>,
 }
 
 impl App {
@@ -194,6 +209,13 @@ impl App {
             host: String::new(),
             pending_sim: None,
             shot: None,
+            motion: opts.screenshot.is_none() && !opts.no_motion,
+            tr_phase: Track::default(),
+            tr_screen: Track::default(),
+            tr_detail: Track::default(),
+            tr_form: Track::default(),
+            phase_t: 1.0,
+            shot_mid: None,
         };
         app.connect();
         if let Some(path) = opts.screenshot {
@@ -213,6 +235,11 @@ impl App {
                 app.pin = "1234".into();
             }
             app.shot = Some((path, 0, false));
+            if opts.shot_mid && app.phase == Phase::Main {
+                app.motion = true;
+                app.shot_mid = Some(app.screen);
+                app.screen = if app.screen == Screen::Requests { Screen::Reviews } else { Screen::Requests };
+            }
         }
         app
     }
@@ -467,8 +494,7 @@ impl App {
             }
         }
         if let Some(t) = &self.toast {
-            let life = if t.ok { 4.0 } else { 7.0 };
-            if t.at.elapsed().as_secs_f32() > life {
+            if t.at.elapsed().as_secs_f32() > toast_life(t.ok) {
                 self.toast = None;
             }
         }
@@ -643,6 +669,7 @@ impl App {
             .show_separator_line(false)
             .frame(egui::Frame::new().fill(c::SIDEBAR))
             .show(ctx, |ui| {
+                ui.set_opacity(self.phase_t);
                 let r = ui.max_rect();
                 let p = ui.painter().clone();
                 let logo_h = 38.0;
@@ -663,18 +690,26 @@ impl App {
                     (Screen::Savings, "💳", "Smile Savings Plan", renewing, false),
                     (Screen::Reviews, "☆", "Review requests", 0, false),
                 ];
-                let mut y = r.min.y + 112.0;
+                let top = r.min.y + 112.0;
+                let sel_idx = items.iter().position(|i| i.0 == self.screen).unwrap_or(0) as f32;
+                let target = top + sel_idx * 46.0;
+                let hy = if self.motion { ctx.animate_value_with_time(Id::new("nav-highlight"), target, motion::SLIDE_SECS) } else { target };
+                let hr = Rect::from_min_size(pos2(r.min.x + 12.0, hy), vec2(r.width() - 24.0, 40.0));
+                p.rect_filled(hr, 8, c::SIDEBAR_HI);
+                p.rect_filled(Rect::from_min_size(pos2(hr.min.x, hr.min.y + 10.0), vec2(3.0, 20.0)), 2, c::SKY);
+                let mut y = top;
                 for (screen, icon, label, count, red) in items {
                     let ir = Rect::from_min_size(pos2(r.min.x + 12.0, y), vec2(r.width() - 24.0, 40.0));
                     let resp = ui.interact(ir, Id::new(("nav", label)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
                     let sel = self.screen == screen;
-                    if sel {
-                        p.rect_filled(ir, 8, c::SIDEBAR_HI);
-                    } else if resp.hovered() {
-                        p.rect_filled(ir, 8, Color32::from_rgb(56, 63, 79));
+                    let h = ctx.animate_bool_with_time(resp.id.with("hover"), resp.hovered() && !sel, motion::HOVER_SECS);
+                    if h > 0.0 {
+                        p.rect_filled(ir, 8, Color32::from_rgb(56, 63, 79).gamma_multiply(h));
                     }
-                    let fg = if sel { c::WHITE } else { Color32::from_rgb(208, 213, 221) };
-                    p.text(pos2(ir.min.x + 14.0, ir.center().y), Align2::LEFT_CENTER, icon, font(15.0, W::Regular), if sel { Color32::from_rgb(120, 190, 240) } else { fg });
+                    // text brightens as the sliding highlight arrives
+                    let near = (1.0 - (hy - y).abs() / 46.0).clamp(0.0, 1.0);
+                    let fg = Color32::from_rgb(208, 213, 221).lerp_to_gamma(c::WHITE, near);
+                    p.text(pos2(ir.min.x + 14.0, ir.center().y), Align2::LEFT_CENTER, icon, font(15.0, W::Regular), fg.lerp_to_gamma(Color32::from_rgb(120, 190, 240), near));
                     p.text(pos2(ir.min.x + 42.0, ir.center().y), Align2::LEFT_CENTER, label, font(13.5, if sel { W::Semi } else { W::Medium }), fg);
                     if count > 0 {
                         let cc = pos2(ir.max.x - 20.0, ir.center().y);
@@ -737,12 +772,25 @@ impl App {
     fn toast_ui(&mut self, ctx: &egui::Context) {
         let Some(t) = &self.toast else { return };
         let (msg, ok) = (t.msg.clone(), t.ok);
+        let age = t.at.elapsed().as_secs_f32();
+        let life = toast_life(ok);
+        let (rise, alpha) = if self.motion {
+            let t_in = egui::emath::easing::cubic_out((age / 0.24).clamp(0.0, 1.0));
+            let t_out = ((life - age) / 0.3).clamp(0.0, 1.0);
+            ((1.0 - t_in) * 22.0, t_in.min(t_out))
+        } else {
+            (0.0, 1.0)
+        };
+        if alpha < 1.0 || rise > 0.0 {
+            ctx.request_repaint();
+        }
         let mut dismiss = false;
         let screen = ctx.screen_rect();
         egui::Area::new(Id::new("toast"))
             .order(egui::Order::Tooltip)
-            .anchor(Align2::CENTER_BOTTOM, vec2(122.0, -24.0))
+            .anchor(Align2::CENTER_BOTTOM, vec2(122.0, -24.0 + rise))
             .show(ctx, |ui| {
+                ui.set_opacity(alpha);
                 egui::Frame::new()
                     .fill(c::TOAST)
                     .corner_radius(24)
@@ -804,7 +852,13 @@ impl App {
         }
         let Some((path, frames, requested)) = self.shot.as_mut() else { return };
         *frames += 1;
-        if !*requested && *frames > 12 {
+        if let Some(target) = self.shot_mid {
+            if *frames == 12 {
+                self.screen = target;
+            }
+        }
+        let capture_at = if self.shot_mid.is_some() { 15 } else { 12 };
+        if !*requested && *frames > capture_at {
             *requested = true;
             ctx.send_viewport_cmd(ViewportCommand::Screenshot(Default::default()));
         }
@@ -840,6 +894,16 @@ impl eframe::App for App {
         self.shortcuts(ctx);
         self.resize_edges(ctx);
         self.title_bar(ctx);
+        let phase_key = match self.phase {
+            Phase::Damaged(_) => 0u8,
+            Phase::SignIn => 1,
+            Phase::Main => 2,
+        };
+        self.phase_t = self.tr_phase.update(&phase_key, motion::SCREEN_SECS, self.motion);
+        let screen_t = self.tr_screen.update(&self.screen, motion::SCREEN_SECS, self.motion);
+        if self.phase_t < 1.0 || screen_t < 1.0 {
+            ctx.request_repaint();
+        }
         match &self.phase {
             Phase::Damaged(msg) => {
                 let msg = msg.clone();
@@ -850,11 +914,19 @@ impl eframe::App for App {
                 self.sidebar(ctx);
                 egui::CentralPanel::default()
                     .frame(egui::Frame::new().fill(c::BG).inner_margin(egui::Margin { left: 32, right: 32, top: 26, bottom: 28 }))
-                    .show(ctx, |ui| match self.screen {
-                        Screen::Requests => inbox::show(self, ui),
-                        Screen::Forms => forms::show(self, ui),
-                        Screen::Savings => savings::show(self, ui),
-                        Screen::Reviews => reviews::show(self, ui),
+                    .show(ctx, |ui| {
+                        // incoming screen fades in while rising slightly into place
+                        let t = self.phase_t.min(screen_t);
+                        let r = ui.max_rect().translate(vec2(0.0, (1.0 - t) * motion::RISE));
+                        let mut ui = ui.new_child(egui::UiBuilder::new().max_rect(r).layout(egui::Layout::top_down(egui::Align::Min)));
+                        ui.set_opacity(t);
+                        let ui = &mut ui;
+                        match self.screen {
+                            Screen::Requests => inbox::show(self, ui),
+                            Screen::Forms => forms::show(self, ui),
+                            Screen::Savings => savings::show(self, ui),
+                            Screen::Reviews => reviews::show(self, ui),
+                        }
                     });
             }
         }
@@ -865,6 +937,10 @@ impl eframe::App for App {
 }
 
 // ------------------------------------------------------------------ shared bits
+
+pub fn toast_life(ok: bool) -> f32 {
+    if ok { 4.0 } else { 7.0 }
+}
 
 pub fn demo_staff() -> Vec<Staff> {
     vec![

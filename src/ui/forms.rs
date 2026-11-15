@@ -116,10 +116,13 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
         for f in &forms {
             let (r, resp) = ui.allocate_exact_size(vec2(inner.width(), 78.0), Sense::click());
             let sel = app.sel_form == Some(f.id);
+            let st = ui.ctx().animate_bool_with_time(resp.id.with("sel"), sel, crate::motion::DETAIL_SECS);
+            let ht = ui.ctx().animate_bool_with_time(resp.id.with("hover"), resp.hovered() && !sel, crate::motion::HOVER_SECS);
             let p = ui.painter();
-            p.rect_filled(r, 0, if sel { c::BLUE_BG } else if resp.hovered() { Color32::from_rgb(249, 251, 253) } else { c::WHITE });
-            if sel {
-                p.rect_filled(Rect::from_min_size(r.min, vec2(3.0, r.height())), 0, c::BLUE);
+            p.rect_filled(r, 0, c::WHITE.lerp_to_gamma(Color32::from_rgb(246, 249, 252), ht).lerp_to_gamma(c::BLUE_BG, st));
+            if st > 0.0 {
+                let bh = r.height() * st;
+                p.rect_filled(Rect::from_min_size(pos2(r.min.x, r.center().y - bh / 2.0), vec2(3.0, bh)), 0, c::BLUE);
             }
             theme::hline(p, r.min.x, r.max.x, r.max.y);
             theme::text_at(p, pos2(r.min.x + 16.0, r.min.y + 14.0), &f.name, font(14.5, W::Semi), c::INK, r.width() - 120.0);
@@ -165,6 +168,11 @@ fn viewer(app: &mut App, ui: &mut egui::Ui, r: Rect, f: &PatientForm) {
     p.rect_filled(body, egui::CornerRadius { nw: 0, ne: 0, sw: 12, se: 12 }, Color32::from_rgb(237, 241, 245));
     let mut vu = ui.new_child(egui::UiBuilder::new().max_rect(body));
     vu.set_clip_rect(body);
+    let t = app.tr_form.update(&f.id, crate::motion::DETAIL_SECS, app.motion);
+    vu.set_opacity(crate::motion::soft(t));
+    if t < 1.0 {
+        vu.ctx().request_repaint();
+    }
     let jump = std::mem::take(&mut app.jump_medical);
     let mut clicked_jump = false;
     egui::ScrollArea::vertical().id_salt(("form-doc", f.id)).auto_shrink([false, false]).show(&mut vu, |ui| {
