@@ -69,13 +69,20 @@ pub fn show(app: &mut App, ui: &mut egui::Ui) {
                 app.focus_inbox_search = false;
             }
             if !app.query.trim().is_empty() {
+                // match count sits under the search box, right-aligned with it
                 let (p, r) = inbox(&reqs, app.filter, &app.query);
                 let n = p.len() + r.len();
-                ui.label(txt(format!("{n} {} for “{}”", if n == 1 { "match" } else { "matches" }, app.query.trim()), 12.5, W::Regular, c::FAINT));
+                ui.painter().text(
+                    pos2(resp.rect.max.x - 4.0, resp.rect.max.y + 5.0),
+                    Align2::RIGHT_TOP,
+                    format!("{n} {} for “{}”", if n == 1 { "match" } else { "matches" }, app.query.trim()),
+                    font(12.0, W::Regular),
+                    c::FAINT,
+                );
             }
         });
     });
-    ui.add_space(16.0);
+    ui.add_space(28.0);
 
     let (pinned, rest) = inbox(&reqs, app.filter, &app.query);
     let order: Vec<u64> = pinned.iter().chain(rest.iter()).map(|r| r.id).collect();

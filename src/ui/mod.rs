@@ -233,6 +233,17 @@ impl App {
                 if app.screen == Screen::Requests {
                     app.sel_req = app.data.requests.iter().find(|r| r.id == 1044).map(|r| r.id);
                 }
+                // screenshot-only hooks for checking layout states (demo data only)
+                if let Ok(q) = std::env::var("NVO_SHOT_QUERY") {
+                    app.query = q.clone();
+                    app.mem_query = q;
+                }
+                if let Ok(plan) = std::env::var("NVO_SHOT_PLAN") {
+                    if let Dialog::AddMember { plan: p, plan_touched, .. } = &mut *app.dialog.insert(Dialog::add_member()) {
+                        *p = plan;
+                        *plan_touched = true;
+                    }
+                }
             } else {
                 app.pin = "1234".into();
             }

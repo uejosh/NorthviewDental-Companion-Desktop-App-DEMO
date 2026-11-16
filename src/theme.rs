@@ -368,7 +368,8 @@ pub fn search_box(ui: &mut Ui, id: &str, text: &mut String, hint: &str, shortcut
         .text_color(fg)
         .vertical_align(egui::Align::Center)
         .desired_width(te_rect.width());
-    let resp = ui.put(te_rect, te);
+    // a child Ui keeps the field from moving the parent's layout cursor back inside the box
+    let resp = ui.new_child(egui::UiBuilder::new().max_rect(te_rect).layout(egui::Layout::left_to_right(egui::Align::Center))).add_sized(te_rect.size(), te);
     if resp.has_focus() && ui.input(|i| i.key_pressed(egui::Key::Escape)) {
         text.clear();
     }

@@ -22,6 +22,11 @@ pub fn plan_label(key: &str) -> &'static str {
     PLANS.iter().find(|p| p.0 == key).map(|p| p.1).unwrap_or("Single")
 }
 
+/// Number of people a plan covers before the extra-member charge.
+pub fn plan_size(key: &str) -> usize {
+    PLANS.iter().find(|p| p.0 == key).map(|p| p.2).unwrap_or(1)
+}
+
 /// Yearly price including any members beyond the plan size.
 pub fn plan_price(key: &str, people: usize) -> u32 {
     let (_, _, size, price) = PLANS.iter().copied().find(|p| p.0 == key).unwrap_or(PLANS[0]);

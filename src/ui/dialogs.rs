@@ -239,8 +239,10 @@ pub fn show(app: &mut App, ctx: &egui::Context) {
                 ui.add_space(6.0);
                 ui.checkbox(paid, txt("First year paid", 13.0, W::Medium, c::INK));
                 ui.add_space(6.0);
+                // a plan covers at least its own size, even before every name is typed in
+                let covered = count.max(plan_size(plan));
                 ui.label(txt(
-                    format!("{} {} · {} / yr · renews {}", count, if count == 1 { "person" } else { "people" }, money(plan_price(plan, count)), add_year(*enrolled).format("%b %-d, %Y")),
+                    format!("{} {} · {} / yr · renews {}", covered, if covered == 1 { "person" } else { "people" }, money(plan_price(plan, count)), add_year(*enrolled).format("%b %-d, %Y")),
                     13.0,
                     W::Semi,
                     c::BLUE,

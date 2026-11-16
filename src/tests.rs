@@ -12,6 +12,7 @@ fn now() -> chrono::DateTime<Utc> {
 #[test]
 fn plan_prices_match_website() {
     assert_eq!(plan_price("single", 1), 500);
+    assert_eq!((plan_size("single"), plan_size("dual"), plan_size("family3"), plan_size("family4")), (1, 2, 3, 4));
     assert_eq!(plan_price("dual", 2), 925);
     assert_eq!(plan_price("family3", 3), 1350);
     assert_eq!(plan_price("family4", 4), 1500);
