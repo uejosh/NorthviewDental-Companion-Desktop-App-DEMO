@@ -308,21 +308,52 @@ fn detail(app: &mut App, ui: &mut egui::Ui, r: Rect, req: &Request, pos: Option<
     theme::hline(&p, r.min.x, r.max.x, ar.max.y);
     let mut au = ui.new_child(egui::UiBuilder::new().max_rect(ar.shrink2(vec2(24.0, 14.0))).layout(egui::Layout::left_to_right(egui::Align::Center)));
     au.spacing_mut().item_spacing.x = 10.0;
-    if theme::button(&mut au, "Copy for Eaglesoft", Btn::Outline, Some("📋")).on_hover_text("Copies the patient's details, ready to paste into Eaglesoft").clicked() {
+    let open = req.status.is_open();
+    // Pick the longest labels that fit, so Decline never lands on top of the other buttons
+    // (narrow windows and high display scaling both shrink this pane).
+    let contact = match req.status {
+        Status::New => Some(["Mark contacted", "Contacted"]),
+        Status::Contacted => Some(["Contacted again", "Again"]),
+        _ => None,
+    };
+    let labels = |i: usize| {
+        let copy = ["Copy for Eaglesoft", "Copy"][i];
+        let sched = if open { ["Mark scheduled", "Scheduled"][i] } else { "Reopen" };
+        (copy, contact.map(|c| c[i]), sched)
+    };
+    let row_width = |ui: &egui::Ui, i: usize, icons: bool| {
+        let (copy, contact, sched) = labels(i);
+        let ic = |s: &'static str| if icons { Some(s) } else { None };
+        let mut w = theme::button_width(ui, copy, Btn::Outline, ic("📋")) + theme::button_width(ui, sched, Btn::Primary, ic("✔")) + 10.0;
+        if let Some(c) = contact {
+            w += theme::button_width(ui, c, Btn::Outline, ic("💬")) + 10.0;
+        }
+        if open {
+            w += theme::button_width(ui, "Decline…", Btn::DangerText, None) + 10.0;
+        }
+        if app.busy {
+            w += 30.0;
+        }
+        w
+    };
+    let room = au.available_width();
+    let (lvl, icons) = [(0, true), (1, true), (1, false)].into_iter().find(|&(i, ic)| row_width(&au, i, ic) <= room).unwrap_or((1, false));
+    let (copy_l, contact_l, sched_l) = labels(lvl);
+    let ic = |s: &'static str| if icons { Some(s) } else { None };
+    if theme::button(&mut au, copy_l, Btn::Outline, ic("📋")).on_hover_text("Copies the patient's details, ready to paste into Eaglesoft").clicked() {
         au.ctx().copy_text(req.eaglesoft_text(today));
         app.act(Act::Copied(req.id), "");
         app.toast("Copied. Paste into Eaglesoft.", true);
     }
-    let open = req.status.is_open();
-    if req.status == Status::New && theme::button(&mut au, "Mark contacted", Btn::Outline, Some("💬")).clicked() {
-        app.dialog = Some(Dialog::Contacted { id: req.id, note: String::new() });
-    } else if req.status == Status::Contacted && theme::button(&mut au, "Contacted again", Btn::Outline, Some("💬")).clicked() {
-        app.dialog = Some(Dialog::Contacted { id: req.id, note: String::new() });
+    if let Some(cl) = contact_l {
+        if theme::button(&mut au, cl, Btn::Outline, ic("💬")).on_hover_text("Log a call, text or email to the patient").clicked() {
+            app.dialog = Some(Dialog::Contacted { id: req.id, note: String::new() });
+        }
     }
-    if open && theme::button_sized(&mut au, "Mark scheduled", Btn::Primary, Some("✔"), None, !app.busy).clicked() {
+    if open && theme::button_sized(&mut au, sched_l, Btn::Primary, ic("✔"), None, !app.busy).clicked() {
         app.dialog = Some(Dialog::Scheduled { id: req.id, date: req.appt_date.unwrap_or(today + chrono::Duration::days(1)), with_date: true });
     }
-    if !open && theme::button_sized(&mut au, "Reopen", Btn::Outline, Some("↺"), None, !app.busy).clicked() {
+    if !open && theme::button_sized(&mut au, "Reopen", Btn::Outline, ic("↺"), None, !app.busy).clicked() {
         app.act(Act::SetStatus { id: req.id, status: Status::New, note: String::new(), appt: None }, &format!("{} reopened", req.name()));
     }
     au.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
@@ -369,8 +400,12 @@ fn detail(app: &mut App, ui: &mut egui::Ui, r: Rect, req: &Request, pos: Option<
                         let lr = Rect::from_min_size(pos2(rr.min.x + 130.0, rr.center().y - g.size().y / 2.0), g.size());
                         p.galley(lr.min, g, c::BLUE);
                         p.line_segment([pos2(lr.min.x, lr.max.y), lr.max], Stroke::new(1.0, c::BLUE));
-                        p.text(pos2(rr.max.x, rr.center().y), Align2::RIGHT_CENTER, "Click to call", font(11.5, W::Regular), c::FAINT);
-                        let resp = ui.interact(lr.expand(4.0), Id::new(("call", req.id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand);
+                        // hint only when there's room for it beside the number
+                        let hint = p.layout_no_wrap("Click to call".into(), font(11.5, W::Regular), c::FAINT);
+                        if lr.max.x + 16.0 + hint.size().x <= rr.max.x {
+                            p.galley(pos2(rr.max.x - hint.size().x, rr.center().y - hint.size().y / 2.0), hint, c::FAINT);
+                        }
+                        let resp = ui.interact(lr.expand(4.0), Id::new(("call", req.id)), Sense::click()).on_hover_cursor(CursorIcon::PointingHand).on_hover_text("Click to call");
                         if resp.clicked() {
                             call(app, &req.phone);
                         }

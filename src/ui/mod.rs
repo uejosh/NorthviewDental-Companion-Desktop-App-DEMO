@@ -234,6 +234,10 @@ impl App {
                     app.sel_req = app.data.requests.iter().find(|r| r.id == 1044).map(|r| r.id);
                 }
                 // screenshot-only hooks for checking layout states (demo data only)
+                // NVO_SHOT_ZOOM=1.5 mimics Windows display scaling (narrower layout in app units)
+                if let Some(z) = std::env::var("NVO_SHOT_ZOOM").ok().and_then(|v| v.parse::<f32>().ok()) {
+                    cc.egui_ctx.set_zoom_factor(z);
+                }
                 if let Ok(q) = std::env::var("NVO_SHOT_QUERY") {
                     app.query = q.clone();
                     app.mem_query = q;

@@ -54,18 +54,21 @@ To update the plugin: `server/northview-office-api.zip` → *Plugins → Add New
 cargo run --release              # run
 cargo test                       # business rules, website JSON contract, storage recovery, PDF
 cargo run -- --screenshot shot.png --screen requests   # signin|requests|forms|savings|reviews (demo data)
-python3 package.py               # release build + dist/ archive (Windows: ZIP with per-user installer)
+python3 package.py               # release build + dist/ package (Windows: setup .exe, Linux: tar.gz)
 ```
 
 Other options: `--data-dir <folder>` isolates settings/demo data, `--demo` forces demo mode,
 `--no-motion` turns off transitions (screen fades, sliding highlights, toast slide; see `src/motion.rs`).
 
-**GitHub Actions** (`.github/workflows/windows.yml`) builds the Windows ZIP on every push to `main`
+**GitHub Actions** (`.github/workflows/windows.yml`) builds the Windows installer (`NorthviewOffice-<version>-setup.exe`) on every push to `main`
 (download it from the run's *Artifacts*), and publishes a GitHub Release when you push a tag:
 `git tag v0.1.0 && git push origin v0.1.0`. It can also be started by hand from the Actions tab.
 
-Locally, Windows builds must be made on Windows (`python3 package.py`) or with a MinGW cross toolchain
-(`python3 package.py --target x86_64-pc-windows-gnu`). Release builds hide the console window.
+The installer is made with [Inno Setup 6](https://jrsoftware.org/isdl.php) from
+`packaging/windows/northview-office.iss`: per-user (no administrator), Start-menu and optional Desktop
+shortcuts, notification identity, uninstaller in *Settings → Apps*, and in-place upgrades. It also
+replaces installs made by the old PowerShell script (0.1.0–0.1.2). To build it locally on Windows,
+install Inno Setup and run `python package.py`. Release builds hide the console window.
 
 ## Layout
 
@@ -81,6 +84,7 @@ src/theme.rs       brand palette, Poppins fonts, custom widgets
 src/motion.rs      transition timings and helpers
 build.rs           embeds assets/icon.ico + version info into the Windows .exe
 packaging/linux/   install.sh / uninstall.sh (applications-menu launcher + icon)
+packaging/windows/ northview-office.iss (Inno Setup installer script)
 src/ui/            sign-in, shell, inbox, forms, savings, reviews, dialogs
 server/            WordPress plugin source + zip
 ```

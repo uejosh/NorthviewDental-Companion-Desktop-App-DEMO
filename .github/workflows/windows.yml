@@ -1,6 +1,6 @@
-# Builds the Windows installer ZIP (NorthviewOffice.exe + per-user install.ps1).
-#  - every push to main / pull request: test + build, ZIP attached to the run as an artifact
-#  - pushing a tag like v0.1.0: also publishes a GitHub Release with the ZIP
+# Builds the Windows installer (NorthviewOffice-<version>-setup.exe, Inno Setup, per-user).
+#  - every push to main / pull request: test + build, installer attached to the run as an artifact
+#  - pushing a tag like v0.1.0: also publishes a GitHub Release with the installer
 #  - can be started by hand from the Actions tab (Run workflow)
 name: Windows installer
 
@@ -35,6 +35,13 @@ jobs:
         with:
           python-version: "3.12"
 
+      - name: Install Inno Setup
+        shell: pwsh
+        run: |
+          $iscc = Join-Path ${env:ProgramFiles(x86)} 'Inno Setup 6\ISCC.exe'
+          if (-not (Test-Path $iscc)) { choco install innosetup -y --no-progress }
+          if (-not (Test-Path $iscc)) { throw "Inno Setup was not installed" }
+
       - name: Run tests
         run: cargo test
 
@@ -45,10 +52,10 @@ jobs:
         id: pkg
         shell: pwsh
         run: |
-          $zip = Get-ChildItem dist -Filter "NorthviewOffice-*-windows.zip" | Select-Object -First 1
-          if (-not $zip) { throw "Windows ZIP was not produced" }
-          "path=$($zip.FullName)" >> $env:GITHUB_OUTPUT
-          "name=$($zip.BaseName)" >> $env:GITHUB_OUTPUT
+          $exe = Get-ChildItem dist -Filter "NorthviewOffice-*-setup.exe" | Select-Object -First 1
+          if (-not $exe) { throw "Windows installer was not produced" }
+          "path=$($exe.FullName)" >> $env:GITHUB_OUTPUT
+          "name=$($exe.BaseName)" >> $env:GITHUB_OUTPUT
 
       - uses: actions/upload-artifact@v4
         with:
@@ -65,4 +72,4 @@ jobs:
         run: |
           gh release create "${{ github.ref_name }}" "${{ steps.pkg.outputs.path }}" `
             --title "Northview Office ${{ github.ref_name }}" `
-            --notes "Windows installer: unzip, then right-click install.ps1 > Run with PowerShell. Demo data works out of the box; live mode needs the site address and device key from the website (Tools > Northview Office App)."
+            --notes "Windows: download and run the setup .exe (no administrator needed; upgrades an existing install in place). The installer isn't code-signed yet, so Windows SmartScreen may ask you to click More info > Run anyway. Demo data works out of the box; live mode needs the site address and device key from the website (Tools > Northview Office App)."

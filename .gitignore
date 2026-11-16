@@ -1,3 +1,4 @@
 target/
 dist/
 demo-staff.local.txt
+__pycache__/

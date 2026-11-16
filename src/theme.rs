@@ -194,10 +194,25 @@ pub fn button(ui: &mut Ui, label: &str, kind: Btn, icon: Option<&str>) -> Respon
     button_sized(ui, label, kind, icon, None, true)
 }
 
+fn button_font(kind: Btn) -> FontId {
+    let small = matches!(kind, Btn::Small | Btn::SmallPrimary);
+    font(if small { 13.0 } else { 14.0 }, if matches!(kind, Btn::Primary | Btn::SmallPrimary | Btn::Danger) { W::Semi } else { W::Medium })
+}
+
+/// Width `button` will take for this label, so rows can pick a layout that fits before drawing.
+pub fn button_width(ui: &Ui, label: &str, kind: Btn, icon: Option<&str>) -> f32 {
+    let small = matches!(kind, Btn::Small | Btn::SmallPrimary);
+    let text = match icon {
+        Some(i) => format!("{i}  {label}"),
+        None => label.to_string(),
+    };
+    ui.painter().layout_no_wrap(text, button_font(kind), c::INK).size().x + if small { 24.0 } else { 34.0 }
+}
+
 pub fn button_sized(ui: &mut Ui, label: &str, kind: Btn, icon: Option<&str>, width: Option<f32>, enabled: bool) -> Response {
     let small = matches!(kind, Btn::Small | Btn::SmallPrimary);
     let h = if small { 30.0 } else { 38.0 };
-    let f = font(if small { 13.0 } else { 14.0 }, if matches!(kind, Btn::Primary | Btn::SmallPrimary | Btn::Danger) { W::Semi } else { W::Medium });
+    let f = button_font(kind);
     let (fg, bg, stroke) = match kind {
         Btn::Primary | Btn::SmallPrimary => (c::WHITE, c::BLUE, None),
         Btn::Outline | Btn::Small => (c::INK, c::WHITE, Some(c::LINE)),

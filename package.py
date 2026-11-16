@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
 """Build the Northview Office App and package it.
 
-On Windows (or with --target x86_64-pc-windows-gnu and a MinGW toolchain) this produces
-dist/NorthviewOffice-<version>-windows.zip containing the executable and a per-user
-PowerShell installer that:
-  * copies the app to %LOCALAPPDATA%\\Programs\\NorthviewOffice
-  * creates Desktop and Start-menu shortcuts
+On Windows this produces dist/NorthviewOffice-<version>-setup.exe, a per-user installer
+built with Inno Setup 6 (packaging/windows/northview-office.iss) that:
+  * installs the app to %LOCALAPPDATA%\\Programs\\NorthviewOffice (no administrator needed)
+  * creates Start-menu and (optional) Desktop shortcuts
   * registers the notification ID SturlDigital.NorthviewOffice under HKCU so desktop
     notifications show the Northview name and icon
-No administrator account is needed.
+  * adds an uninstaller under Settings > Apps
+Inno Setup must be installed (https://jrsoftware.org/isdl.php, or `choco install innosetup`).
 
 On Linux/macOS it produces a tar.gz of the native build.
 
@@ -19,6 +19,7 @@ Usage:
 """
 
 import argparse
+import os
 import pathlib
 import platform
 import re
@@ -26,63 +27,14 @@ import shutil
 import subprocess
 import sys
 import tarfile
-import zipfile
 
 ROOT = pathlib.Path(__file__).resolve().parent
 APP_ID = "SturlDigital.NorthviewOffice"
 
-INSTALL_PS1 = r"""
-# Northview Office per-user installer. Run: right-click > Run with PowerShell
-$ErrorActionPreference = 'Stop'
-$appId   = '__APP_ID__'
-$dest    = Join-Path $env:LOCALAPPDATA 'Programs\NorthviewOffice'
-$src     = Split-Path -Parent $MyInvocation.MyCommand.Path
-New-Item -ItemType Directory -Force -Path $dest | Out-Null
-Get-Process -Name 'NorthviewOffice' -ErrorAction SilentlyContinue | Stop-Process -Force
-Copy-Item -Force (Join-Path $src 'NorthviewOffice.exe') $dest
-Copy-Item -Force (Join-Path $src 'icon.png') $dest
-Copy-Item -Force (Join-Path $src 'uninstall.ps1') $dest
-$exe = Join-Path $dest 'NorthviewOffice.exe'
-
-# Notification identity (unpackaged app registration)
-$key = "HKCU:\Software\Classes\AppUserModelId\$appId"
-New-Item -Force -Path $key | Out-Null
-Set-ItemProperty -Path $key -Name 'DisplayName' -Value 'Northview Office'
-Set-ItemProperty -Path $key -Name 'IconUri' -Value (Join-Path $dest 'icon.png')
-
-# Shortcuts
-$shell = New-Object -ComObject WScript.Shell
-foreach ($dir in @([Environment]::GetFolderPath('Desktop'), (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs'))) {
-  $lnk = $shell.CreateShortcut((Join-Path $dir 'Northview Office.lnk'))
-  $lnk.TargetPath = $exe
-  $lnk.WorkingDirectory = $dest
-  $lnk.IconLocation = "$exe,0"
-  $lnk.Description = 'Northview Dental front-desk app'
-  $lnk.Save()
-}
-Write-Host "Northview Office installed to $dest" -ForegroundColor Green
-""".replace("__APP_ID__", APP_ID)
-
-UNINSTALL_PS1 = r"""
-$ErrorActionPreference = 'SilentlyContinue'
-$appId = '__APP_ID__'
-Get-Process -Name 'NorthviewOffice' | Stop-Process -Force
-Remove-Item -Force (Join-Path ([Environment]::GetFolderPath('Desktop')) 'Northview Office.lnk')
-Remove-Item -Force (Join-Path $env:APPDATA 'Microsoft\Windows\Start Menu\Programs\Northview Office.lnk')
-Remove-Item -Recurse -Force "HKCU:\Software\Classes\AppUserModelId\$appId"
-Remove-Item -Recurse -Force (Join-Path $env:LOCALAPPDATA 'Programs\NorthviewOffice')
-Write-Host 'Northview Office removed. Settings in %LOCALAPPDATA%\NorthviewOffice were kept.'
-""".replace("__APP_ID__", APP_ID)
-
 README = """Northview Office {version}
 
-INSTALL (Linux)
+INSTALL
   ./install.sh   (adds Northview Office to your applications menu with its icon)
-
-INSTALL (Windows)
-  1. Unzip this folder.
-  2. Right-click install.ps1 > Run with PowerShell.
-  3. Open "Northview Office" from the Desktop.
 
 FIRST RUN
   On the sign-in screen click the connection link under the PIN box, choose
@@ -98,6 +50,18 @@ Patient data from the website is kept in memory only and is never written to thi
 def version() -> str:
     m = re.search(r'^version\s*=\s*"([^"]+)"', (ROOT / "Cargo.toml").read_text(), re.M)
     return m.group(1) if m else "0.0.0"
+
+
+def find_iscc() -> pathlib.Path | None:
+    on_path = shutil.which("iscc") or shutil.which("ISCC.exe")
+    if on_path:
+        return pathlib.Path(on_path)
+    for base in (os.environ.get("ProgramFiles(x86)"), os.environ.get("ProgramFiles"), os.environ.get("LOCALAPPDATA") and os.path.join(os.environ["LOCALAPPDATA"], "Programs")):
+        if base:
+            c = pathlib.Path(base) / "Inno Setup 6" / "ISCC.exe"
+            if c.exists():
+                return c
+    return None
 
 
 def main() -> int:
@@ -121,6 +85,23 @@ def main() -> int:
     ver = version()
     dist = ROOT / "dist"
     dist.mkdir(exist_ok=True)
+    if windows:
+        iscc = find_iscc()
+        if not iscc:
+            print("Inno Setup 6 (ISCC.exe) not found. Install it from https://jrsoftware.org/isdl.php", file=sys.stderr)
+            return 1
+        iss = ROOT / "packaging" / "windows" / "northview-office.iss"
+        cmd = [str(iscc), "/Q", f"/DAppVersion={ver}", f"/DSourceExe={exe}", f"/DOutputDir={dist}", str(iss)]
+        print("+", " ".join(cmd))
+        subprocess.run(cmd, cwd=iss.parent, check=True)
+        out = dist / f"NorthviewOffice-{ver}-setup.exe"
+        if not out.exists():
+            print(f"Installer not produced: {out}", file=sys.stderr)
+            return 1
+        print(f"Packaged {out.relative_to(ROOT)} ({out.stat().st_size // 1024} KB)")
+        return 0
+
+    # Linux / macOS: tar.gz with the binary, icons and install scripts
     stage = dist / f"NorthviewOffice-{ver}"
     if stage.exists():
         shutil.rmtree(stage)
@@ -128,22 +109,13 @@ def main() -> int:
     shutil.copy2(ROOT / "assets" / "icon.png", stage / "icon.png")
     (stage / "README.txt").write_text(README.format(version=ver))
 
-    if windows:
-        shutil.copy2(exe, stage / "NorthviewOffice.exe")
-        (stage / "install.ps1").write_text(INSTALL_PS1, encoding="utf-8-sig")
-        (stage / "uninstall.ps1").write_text(UNINSTALL_PS1, encoding="utf-8-sig")
-        out = dist / f"NorthviewOffice-{ver}-windows.zip"
-        with zipfile.ZipFile(out, "w", zipfile.ZIP_DEFLATED) as z:
-            for f in sorted(stage.iterdir()):
-                z.write(f, f"NorthviewOffice/{f.name}")
-    else:
-        shutil.copy2(exe, stage / "northview-office")
-        shutil.copy2(ROOT / "assets" / "icon-512.png", stage / "icon-512.png")
-        for name in ("install.sh", "uninstall.sh"):
-            shutil.copy2(ROOT / "packaging" / "linux" / name, stage / name)
-        out = dist / f"NorthviewOffice-{ver}-{platform.system().lower()}-{platform.machine()}.tar.gz"
-        with tarfile.open(out, "w:gz") as t:
-            t.add(stage, arcname="NorthviewOffice")
+    shutil.copy2(exe, stage / "northview-office")
+    shutil.copy2(ROOT / "assets" / "icon-512.png", stage / "icon-512.png")
+    for name in ("install.sh", "uninstall.sh"):
+        shutil.copy2(ROOT / "packaging" / "linux" / name, stage / name)
+    out = dist / f"NorthviewOffice-{ver}-{platform.system().lower()}-{platform.machine()}.tar.gz"
+    with tarfile.open(out, "w:gz") as t:
+        t.add(stage, arcname="NorthviewOffice")
     shutil.rmtree(stage)
     print(f"Packaged {out.relative_to(ROOT)} ({out.stat().st_size // 1024} KB)")
     return 0
